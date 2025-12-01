@@ -9,6 +9,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [greeting, setGreeting] = useState('ערב טוב');
+  const [userNotFound, setUserNotFound] = useState(false);
 
   // Load user data on mount
   useEffect(() => {
@@ -20,21 +21,26 @@ export default function Home() {
         pathname = pathname.slice(basePath.length); // Remove base path
       }
       const pathParts = pathname.split('/').filter(p => p);
-      const userName = pathParts[0] || 'shaked';
+      const userName = pathParts[0] || 'shaked'; // Default to 'shaked' if no username in URL
       
       try {
         const userResponse = await fetch(`${import.meta.env.BASE_URL}assets/users/${userName}.json`);
         if (userResponse.ok) {
           const data = await userResponse.json();
           setUserData(data);
+          setUserNotFound(false);
           
           // Determine greeting based on Israel time
           const israelTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
           const hour = new Date(israelTime).getHours();
           setGreeting(hour < 12 ? 'בוקר טוב' : 'ערב טוב');
+        } else {
+          // User not found
+          setUserNotFound(true);
         }
       } catch (error) {
         console.error('Error loading user data:', error);
+        setUserNotFound(true);
       }
     };
     
@@ -335,6 +341,18 @@ export default function Home() {
       icon: 'logo',
     },
   ];
+
+  // Show error screen if user not found
+  if (userNotFound) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center" dir="rtl">
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">משתמש לא נמצא</h1>
+          <p className="text-gray-600">המשתמש המבוקש אינו קיים במערכת</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white" dir="rtl">
