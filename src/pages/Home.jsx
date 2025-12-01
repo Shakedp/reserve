@@ -13,7 +13,13 @@ export default function Home() {
   // Load user data on mount
   useEffect(() => {
     const loadUserData = async () => {
-      const pathParts = window.location.pathname.split('/').filter(p => p);
+      // Get path relative to base URL (skip /reserve/ on GitHub Pages)
+      const basePath = import.meta.env.BASE_URL.replace(/\/$/, ''); // '/reserve' or ''
+      let pathname = window.location.pathname;
+      if (basePath && pathname.startsWith(basePath)) {
+        pathname = pathname.slice(basePath.length); // Remove base path
+      }
+      const pathParts = pathname.split('/').filter(p => p);
       const userName = pathParts[0] || 'shaked';
       
       try {
