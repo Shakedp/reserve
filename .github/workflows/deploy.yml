@@ -33,6 +33,14 @@ jobs:
 
       - name: Build
         run: npm run build
+      
+      - name: Debug - Show dist contents
+        run: |
+          echo "=== dist/index.html ==="
+          cat dist/index.html
+          echo ""
+          echo "=== dist/assets/ ==="
+          ls -la dist/assets/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
