@@ -2,7 +2,7 @@
   "name": "reserve",
   "version": "1.0.0",
   "type": "module",
-  "homepage": "https://shaked.github.io/reserve",
+  "homepage": "https://shaked.github.io",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
