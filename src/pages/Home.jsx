@@ -17,7 +17,7 @@ export default function Home() {
       const userName = pathParts[0] || 'shaked';
       
       try {
-        const userResponse = await fetch(`/assets/users/${userName}.json`);
+        const userResponse = await fetch(`${import.meta.env.BASE_URL}assets/users/${userName}.json`);
         if (userResponse.ok) {
           const data = await userResponse.json();
           setUserData(data);
@@ -158,7 +158,7 @@ export default function Home() {
 
       // Load the template PDF
       console.log('Loading PDF template...');
-      const response = await fetch('/assets/PDF Approval Document.pdf');
+      const response = await fetch(`${import.meta.env.BASE_URL}assets/PDF Approval Document.pdf`);
       if (!response.ok) {
         throw new Error(`Failed to fetch PDF: ${response.statusText}`);
       }
@@ -181,7 +181,7 @@ export default function Home() {
       
       // Load the David Libre font
       console.log('Loading David Libre font...');
-      const fontResponse = await fetch('/assets/DavidLibre-Regular.ttf');
+      const fontResponse = await fetch(`${import.meta.env.BASE_URL}assets/DavidLibre-Regular.ttf`);
       const fontBytes = await fontResponse.arrayBuffer();
       const font = await pdfDoc.embedFont(fontBytes);
       console.log('✅ David Libre font loaded successfully!');
@@ -336,10 +336,10 @@ export default function Home() {
       <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         {/* Right side - Menu, Line, Icon */}
         <div className="flex items-center gap-2">
-          <img src="/assets/menu-icon.svg" alt="תפריט" className="w-6 h-6 cursor-pointer" />
+          <img src={`${import.meta.env.BASE_URL}assets/menu-icon.svg`} alt="תפריט" className="w-6 h-6 cursor-pointer" />
           <div className="h-6 w-px bg-gray-300"></div>
           <img 
-            src="/assets/emergency-icon.png" 
+            src={`${import.meta.env.BASE_URL}assets/emergency-icon.png`} 
             alt="לוגו" 
             className="w-10 h-10 object-contain"
           />
@@ -354,24 +354,24 @@ export default function Home() {
         
         {/* Left side - Bell and User icons */}
         <div className="flex items-center gap-3">
-          <img src="/assets/bell-icon.svg" alt="התראות" className="w-6 h-6 cursor-pointer" />
-          <img src="/assets/user-icon.svg" alt="משתמש" className="w-6 h-6 cursor-pointer" />
+          <img src={`${import.meta.env.BASE_URL}assets/bell-icon.svg`} alt="התראות" className="w-6 h-6 cursor-pointer" />
+          <img src={`${import.meta.env.BASE_URL}assets/user-icon.svg`} alt="משתמש" className="w-6 h-6 cursor-pointer" />
         </div>
       </header>
 
       {/* Title Section as Image */}
       <div className="w-full">
-        <img src="/assets/section2.png" alt="האישורים שלי" className="w-full" />
+        <img src={`${import.meta.env.BASE_URL}assets/section2.png`} alt="האישורים שלי" className="w-full" />
       </div>
 
       {/* Section 3 - First Document Card */}
       <div className="w-full cursor-pointer" onClick={handleDownload}>
-        <img src="/assets/section3.png" alt="שמ״פ חירום נוכחי" className="w-full" />
+        <img src={`${import.meta.env.BASE_URL}assets/section3.png`} alt="שמ״פ חירום נוכחי" className="w-full" />
       </div>
 
       {/* Section 4 - Second Document Card */}
       <div className="w-full cursor-pointer" onClick={handleDownload}>
-        <img src="/assets/section4.png" alt="טופס אישור שירות מילואים מזכה" className="w-full" />
+        <img src={`${import.meta.env.BASE_URL}assets/section4.png`} alt="טופס אישור שירות מילואים מזכה" className="w-full" />
       </div>
     </div>
   );

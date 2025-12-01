@@ -2,9 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  base: '/reserve/', // GitHub Pages base path (change to '/your-repo-name/' if different)
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -14,5 +14,5 @@ export default defineConfig({
     port: 3000,
     open: true,
   },
-})
+}))
 
