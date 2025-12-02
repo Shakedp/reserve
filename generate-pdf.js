@@ -181,15 +181,15 @@ async function generatePDF() {
       const firstPage = pages[0];
       const { height } = firstPage.getSize();
       
-      // Load David Libre font from local assets
-      const fontPath = path.join(process.cwd(), 'public/assets/DavidLibre-Regular.ttf');
+      // Load Libertinus Serif font from local assets
+      const fontPath = path.join(process.cwd(), 'public/assets/LibertinusSerif-Regular.ttf');
       console.log(`Loading font from: ${fontPath}`);
       
       let font;
       if (fs.existsSync(fontPath)) {
         const fontBytes = fs.readFileSync(fontPath);
         font = await pdfDoc.embedFont(fontBytes);
-        console.log('✅ David Libre font loaded successfully!');
+        console.log('✅ Libertinus Serif font loaded successfully!');
       } else {
         console.log('⚠️  Font not found, falling back to Helvetica');
         font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -200,110 +200,106 @@ async function generatePDF() {
       
       // ABSOLUTE POSITIONS
       
-      // Hebrew Date - 0.1cm down
-      // 0.1cm = ~3 points
-      const hebrewDateX = 40;
-      const hebrewDateY = 791 - 3;
+      // Hebrew Date - 0.1cm right
+      const hebrewDateX = 42.8;
+      const hebrewDateY = 788;
       
       console.log(`Adding Hebrew Date at position: x=${hebrewDateX}, y=${hebrewDateY}`);
       firstPage.drawText(data.hebrewDate, {
         x: hebrewDateX,
         y: hebrewDateY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });
       
-      // English Date - split by spaces and draw separately for RTL
+      // English Date - split by spaces and draw separately for RTL - 0.1cm right
       const englishDateY = 777;
       const englishDateParts = data.englishDate.split(' '); // ["1", "בדצמבר", "2025"]
       const reversedParts = [...englishDateParts].reverse(); // ["2025", "בדצמבר", "1"] for RTL
       
       console.log(`Adding English Date (split, RTL) at y=${englishDateY}`);
       
-      // Start from left, draw each part in reversed order (RTL)
-      let currentX = 40;
+      // Start from left, draw each part in reversed order (RTL) - 0.2cm right
+      let currentX = 45.6;
       reversedParts.forEach((part, index) => {
-        const partWidth = font.widthOfTextAtSize(part, 11);
+        const partWidth = font.widthOfTextAtSize(part, 10);
         console.log(`  Part ${index}: "${part}" at x=${currentX}, width=${partWidth}`);
         
         firstPage.drawText(part, {
           x: currentX,
           y: englishDateY,
-          size: 11,
+          size: 10,
           font: font,
           color: rgb(0, 0, 0),
         });
         
         // Add space width for next part
-        const spaceWidth = font.widthOfTextAtSize(' ', 11);
+        const spaceWidth = font.widthOfTextAtSize(' ', 10);
         currentX += partWidth + spaceWidth;
       });
       
-      // ID Number - 0.5cm left from 89
-      // 0.5cm = ~14 points
-      const idX = 75;
+      // ID Number - 0.2cm right
+      const idX = 80.7;
       const idY = height - 195;
       
       console.log(`Adding ID Number at position: x=${idX}, y=${idY}`);
       firstPage.drawText(data.idNumber, {
         x: idX,
         y: idY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });
       
-      // First Name - PERFECT at 225
-      const firstNameX = 225;
+      // First Name - 0.1cm right
+      const firstNameX = 227.8;
       const firstNameY = height - 195;
       
       console.log(`Adding First Name at position: x=${firstNameX}, y=${firstNameY}`);
       firstPage.drawText(data.firstName, {
         x: firstNameX,
         y: firstNameY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });
       
-      // Family Name - PERFECT, do not move (358)
-      const familyNameX = 358;
+      // Family Name - 0.1cm right
+      const familyNameX = 360.8;
       const familyNameY = height - 195;
       
       console.log(`Adding Family Name at position: x=${familyNameX}, y=${familyNameY}`);
       firstPage.drawText(data.lastName, {
         x: familyNameX,
         y: familyNameY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });
       
-      // Private Number - 0.5cm left from 494
-      // 0.5cm = ~14 points
-      const privateNumberX = 494 - 14;
+      // Private Number - 0.2cm right
+      const privateNumberX = 485.7;
       const privateNumberY = height - 195;
       
       console.log(`Adding Private Number at position: x=${privateNumberX}, y=${privateNumberY}`);
       firstPage.drawText(data.privateNumber, {
         x: privateNumberX,
         y: privateNumberY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });
       
-      // Beginning Date - 0.2cm right (0.3 - 0.1)
-      // 0.2cm right = ~5.7 points
-      const beginningDateX = 315 + 5.7;
+      // Beginning Date - 0.4cm right total
+      const beginningDateX = 326.3;
       const beginningDateY = 584;
       
       console.log(`Adding Beginning Date at position: x=${beginningDateX}, y=${beginningDateY}`);
       firstPage.drawText(data.beginningDate, {
         x: beginningDateX,
         y: beginningDateY,
-        size: 11,
+        size: 10,
         font: font,
         color: rgb(0, 0, 0),
       });

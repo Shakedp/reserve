@@ -191,18 +191,18 @@ export default function Home() {
       const { height, width } = firstPage.getSize();
       console.log('Page dimensions:', { width, height });
       
-      // Load the David Libre font
-      console.log('Loading David Libre font...');
-      const fontResponse = await fetch(`${import.meta.env.BASE_URL}assets/DavidLibre-Regular.ttf`);
+      // Load the Libertinus Serif font
+      console.log('Loading Libertinus Serif font...');
+      const fontResponse = await fetch(`${import.meta.env.BASE_URL}assets/LibertinusSerif-Regular.ttf`);
       const fontBytes = await fontResponse.arrayBuffer();
       const font = await pdfDoc.embedFont(fontBytes);
-      console.log('✅ David Libre font loaded successfully!');
+      console.log('✅ Libertinus Serif font loaded successfully!');
       
-      const fontSize = 11;
+      const fontSize = 10;
       const textColor = rgb(0, 0, 0);
       
-      // Hebrew Date - 0.1cm down
-      const hebrewDateX = 40;
+      // Hebrew Date - 0.1cm right
+      const hebrewDateX = 42.8;
       const hebrewDateY = 788;
       firstPage.drawText(data.hebrewDate, {
         x: hebrewDateX,
@@ -220,8 +220,8 @@ export default function Home() {
       
       console.log(`Adding English Date (split, RTL) at y=${englishDateY}`);
       
-      // Start from left, draw each part in reversed order (RTL)
-      let currentX = 40;
+      // Start from left, draw each part in reversed order (RTL) - 0.2cm right
+      let currentX = 45.6;
       reversedParts.forEach((part, index) => {
         const partWidth = font.widthOfTextAtSize(part, fontSize);
         console.log(`  Part ${index}: "${part}" at x=${currentX}, width=${partWidth}`);
@@ -239,8 +239,8 @@ export default function Home() {
         currentX += partWidth + spaceWidth;
       });
       
-      // ID Number
-      const idX = 75;
+      // ID Number - 0.2cm right
+      const idX = 80.7;
       const idY = height - 195;
       firstPage.drawText(data.idNumber, {
         x: idX,
@@ -251,8 +251,8 @@ export default function Home() {
       });
       console.log(`Adding ID Number at position: x=${idX}, y=${idY}`);
       
-      // First Name
-      const firstNameX = 225;
+      // First Name - 0.1cm right
+      const firstNameX = 227.8;
       const firstNameY = height - 195;
       firstPage.drawText(data.firstName, {
         x: firstNameX,
@@ -263,8 +263,8 @@ export default function Home() {
       });
       console.log(`Adding First Name at position: x=${firstNameX}, y=${firstNameY}`);
       
-      // Family Name
-      const lastNameX = 358;
+      // Family Name - 0.1cm right
+      const lastNameX = 360.8;
       const lastNameY = height - 195;
       firstPage.drawText(data.lastName, {
         x: lastNameX,
@@ -275,8 +275,8 @@ export default function Home() {
       });
       console.log(`Adding Family Name at position: x=${lastNameX}, y=${lastNameY}`);
       
-      // Private Number
-      const privateNumberX = 480;
+      // Private Number - 0.2cm right
+      const privateNumberX = 485.7;
       const privateNumberY = height - 195;
       firstPage.drawText(data.privateNumber, {
         x: privateNumberX,
@@ -287,9 +287,8 @@ export default function Home() {
       });
       console.log(`Adding Private Number at position: x=${privateNumberX}, y=${privateNumberY}`);
       
-      // Beginning Date - 0.3cm right - 0.1cm left = 0.2cm right, 0.1cm down - 0.1cm up = 0cm
-      // 0.2cm right = ~5.7 points
-      const beginningDateX = 315 + 5.7;
+      // Beginning Date - 0.4cm right total
+      const beginningDateX = 326.3;
       const beginningDateY = 584;
       firstPage.drawText(data.beginningDate, {
         x: beginningDateX,
