@@ -5,6 +5,9 @@ import path from 'path'
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   base: mode === 'production' ? '/reserve/' : '/',
+  build: {
+    outDir: 'docs',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
