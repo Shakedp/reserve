@@ -42,7 +42,9 @@ export async function getUser(token, userName) {
     throw new Error(err.message || `GitHub API ${res.status}`);
   }
   const data = await res.json();
-  const content = atob(data.content.replace(/\n/g, ''));
+  const binary = atob(data.content.replace(/\n/g, ''));
+  const bytes = new Uint8Array([...binary].map((c) => c.charCodeAt(0)));
+  const content = new TextDecoder('utf-8').decode(bytes);
   return { ...JSON.parse(content), _sha: data.sha };
 }
 
@@ -119,4 +121,21 @@ export async function triggerDeploy(token) {
     const err = await res.text();
     throw new Error(err || `Workflow dispatch ${res.status}`);
   }
+}
+
+export async function getLatestDeployStatus(token) {
+  const [owner, repo] = REPO.split('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`,
+    { headers: headers(token) }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  const run = data.workflow_runs?.[0];
+  if (!run || run.name !== 'Build and Deploy') return null;
+  return {
+    status: run.status,
+    conclusion: run.conclusion,
+    createdAt: run.created_at ? new Date(run.created_at).getTime() : 0,
+  };
 }

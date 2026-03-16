@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   Pencil,
@@ -7,10 +7,13 @@ import {
   RefreshCw,
   Loader2,
   ExternalLink,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import * as github from '@/lib/githubApi';
 
 const TOKEN_KEY = 'reserve-admin-token';
+const DEPLOY_POLL_INTERVAL_MS = 5000;
 
 const emptyUser = () => ({
   firstName: '',
@@ -25,11 +28,14 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [deploying, setDeploying] = useState(false);
-  const [editing, setEditing] = useState(null); // { userName, ...userData, _sha }
+  const [deployComplete, setDeployComplete] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [formUser, setFormUser] = useState(emptyUser());
   const [formUserName, setFormUserName] = useState('');
   const [saving, setSaving] = useState(false);
+  const deployPollRef = useRef(null);
+  const deployTriggeredAtRef = useRef(0);
 
   const setToken = (t) => {
     setTokenState(t);
@@ -56,7 +62,43 @@ export default function Admin() {
     loadUsers();
   }, [loadUsers]);
 
+  const stopDeployPoll = useCallback(() => {
+    if (deployPollRef.current) {
+      clearInterval(deployPollRef.current);
+      deployPollRef.current = null;
+    }
+  }, []);
+
+  const startDeployPoll = useCallback(() => {
+    stopDeployPoll();
+    deployTriggeredAtRef.current = Date.now();
+    deployPollRef.current = setInterval(async () => {
+      try {
+        const status = await github.getLatestDeployStatus(token);
+        const isOurRun = status?.createdAt && status.createdAt >= deployTriggeredAtRef.current - 10000;
+        if (status?.status === 'completed' && isOurRun) {
+          stopDeployPoll();
+          setDeploying(false);
+          setDeployComplete(true);
+          setTimeout(() => setDeployComplete(false), 8000);
+        }
+        if (status?.conclusion === 'failure' && isOurRun) {
+          stopDeployPoll();
+          setDeploying(false);
+          setError('הבנייה נכשלה. בדוק ב-Actions.');
+        }
+      } catch {
+        // keep polling
+      }
+    }, DEPLOY_POLL_INTERVAL_MS);
+  }, [token, stopDeployPoll]);
+
+  useEffect(() => {
+    return () => stopDeployPoll();
+  }, [stopDeployPoll]);
+
   const handleLogout = () => {
+    stopDeployPoll();
     setToken('');
     setUsers([]);
     setEditing(null);
@@ -64,18 +106,22 @@ export default function Admin() {
     setError('');
   };
 
-  const handleTriggerDeploy = async () => {
+  const triggerDeployAndWait = useCallback(async () => {
     if (!token) return;
     setDeploying(true);
+    setDeployComplete(false);
     setError('');
     try {
       await github.triggerDeploy(token);
-      setError('');
+      startDeployPoll();
     } catch (e) {
       setError(e.message || 'Failed to trigger deploy');
-    } finally {
       setDeploying(false);
     }
+  }, [token, startDeployPoll]);
+
+  const handleTriggerDeploy = async () => {
+    await triggerDeployAndWait();
   };
 
   const startAdd = () => {
@@ -119,11 +165,11 @@ export default function Admin() {
     const { firstName, lastName, privateNumber, idNumber } = formUser;
     const name = formUserName.trim().toLowerCase();
     if (!name) {
-      setError('Username (path) is required');
+      setError('שם משתמש (נתיב) חובה');
       return;
     }
     if (!firstName.trim() || !lastName.trim()) {
-      setError('First name and last name are required');
+      setError('שם פרטי ושם משפחה חובה');
       return;
     }
     const userData = { firstName, lastName, privateNumber, idNumber };
@@ -134,6 +180,7 @@ export default function Admin() {
         await github.createUser(token, name, userData);
         await loadUsers();
         cancelForm();
+        await triggerDeployAndWait();
       } else if (editing) {
         if (editing.userName === name) {
           await github.updateUser(token, editing.userName, userData, editing._sha);
@@ -143,9 +190,10 @@ export default function Admin() {
         }
         await loadUsers();
         cancelForm();
+        await triggerDeployAndWait();
       }
     } catch (e) {
-      setError(e.message || 'Failed to save');
+      setError(e.message || 'שמירה נכשלה');
     } finally {
       setSaving(false);
     }
@@ -159,8 +207,9 @@ export default function Admin() {
       await github.deleteUser(token, userName, sha);
       await loadUsers();
       if (editing?.userName === userName) cancelForm();
+      await triggerDeployAndWait();
     } catch (e) {
-      setError(e.message || 'Failed to delete');
+      setError(e.message || 'מחיקה נכשלה');
     } finally {
       setSaving(false);
     }
@@ -180,22 +229,23 @@ export default function Admin() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="w-full max-w-md bg-white rounded-lg shadow p-6">
-          <h1 className="text-xl font-bold text-gray-900 mb-2">פאנל ניהול – התחברות</h1>
-          <p className="text-sm text-gray-600 mb-4">
-            הכנס GitHub Personal Access Token עם הרשאת <code className="bg-gray-100 px-1 rounded">repo</code> (או Fine-grained עם גישה לריפו הזה).
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" dir="rtl">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+          <h1 className="text-2xl font-bold text-slate-800 mb-1">פאנל ניהול</h1>
+          <p className="text-slate-500 text-sm mb-6">התחבר עם GitHub כדי לערוך משתמשים</p>
+          <p className="text-slate-600 text-sm mb-4">
+            הכנס Personal Access Token עם הרשאות <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Contents</span> ו־<span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Actions</span>.
           </p>
           <input
             type="password"
-            placeholder="ghp_..."
-            className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+            placeholder="ghp_... או github_pat_..."
+            className="w-full border border-slate-200 rounded-xl px-4 py-3 mb-5 focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition"
             value={token}
             onChange={(e) => setTokenState(e.target.value)}
           />
           <button
             type="button"
-            className="w-full bg-blue-600 text-white py-2 rounded font-medium"
+            className="w-full bg-slate-800 text-white py-3 rounded-xl font-medium hover:bg-slate-700 transition"
             onClick={() => setToken(token)}
           >
             התחבר
@@ -206,14 +256,36 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4" dir="rtl">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold text-gray-900">פאנל ניהול משתמשים</h1>
-          <div className="flex gap-2">
+    <div className="min-h-screen bg-slate-100" dir="rtl">
+      {/* Deploy overlay */}
+      {(deploying || deployComplete) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm mx-4 text-center">
+            {deploying && (
+              <>
+                <Loader2 className="w-12 h-12 animate-spin text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-800 font-medium">מעדכן את האתר</p>
+                <p className="text-slate-500 text-sm mt-1">ה-PDF והדף יתעדכנו בעוד דקה–דקה וחצי</p>
+              </>
+            )}
+            {deployComplete && !deploying && (
+              <>
+                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+                <p className="text-slate-800 font-medium">האתר מעודכן</p>
+                <p className="text-slate-500 text-sm mt-1">אפשר לפתוח את דף המשתמש ולהוריד PDF מעודכן</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-2xl mx-auto p-6">
+        <header className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-bold text-slate-800">ניהול משתמשים</h1>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
+              className="flex items-center gap-2 text-slate-600 hover:text-slate-800 text-sm px-3 py-2 rounded-xl hover:bg-white/80 transition"
               onClick={handleLogout}
               title="התנתק"
             >
@@ -221,27 +293,28 @@ export default function Admin() {
             </button>
             <button
               type="button"
-              className="flex items-center gap-1 text-sm border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
+              className="flex items-center gap-2 text-sm bg-white border border-slate-200 rounded-xl px-4 py-2 hover:bg-slate-50 hover:border-slate-300 transition disabled:opacity-50"
               onClick={handleTriggerDeploy}
               disabled={deploying}
-              title="הרץ בנייה ופרסום מחדש"
+              title="בנה ופרסם את האתר מחדש"
             >
               {deploying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               עדכן את האתר
             </button>
           </div>
-        </div>
+        </header>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
-            {error}
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-800">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span className="text-sm">{error}</span>
           </div>
         )}
 
-        <div className="mb-4 flex justify-end">
+        <div className="mb-6 flex justify-end">
           <button
             type="button"
-            className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded font-medium"
+            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2.5 rounded-xl font-medium hover:bg-slate-700 transition disabled:opacity-50"
             onClick={startAdd}
             disabled={adding || !!editing}
           >
@@ -250,69 +323,74 @@ export default function Admin() {
         </div>
 
         {(adding || editing) && (
-          <div className="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-            <h2 className="font-semibold text-gray-900 mb-3">{adding ? 'משתמש חדש' : 'עריכת משתמש'}</h2>
-            <div className="grid gap-3">
+          <div className="mb-8 bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6">
+            <h2 className="text-lg font-semibold text-slate-800 mb-4">{adding ? 'משתמש חדש' : 'עריכת משתמש'}</h2>
+            <div className="grid gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">שם משתמש (נתיב באתר)</label>
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">שם משתמש (נתיב באתר)</label>
                 <input
                   type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 focus:border-slate-300 outline-none"
                   value={formUserName}
                   onChange={(e) => setFormUserName(e.target.value)}
-                  placeholder="e.g. gal"
+                  placeholder="למשל gal"
                   disabled={!!editing}
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">שם פרטי</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={formUser.firstName}
-                  onChange={(e) => setFormUser((u) => ({ ...u, firstName: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">שם פרטי</label>
+                  <input
+                    type="text"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 outline-none"
+                    value={formUser.firstName}
+                    onChange={(e) => setFormUser((u) => ({ ...u, firstName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">שם משפחה</label>
+                  <input
+                    type="text"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 outline-none"
+                    value={formUser.lastName}
+                    onChange={(e) => setFormUser((u) => ({ ...u, lastName: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">שם משפחה</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={formUser.lastName}
-                  onChange={(e) => setFormUser((u) => ({ ...u, lastName: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">מספר אישי</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={formUser.privateNumber}
-                  onChange={(e) => setFormUser((u) => ({ ...u, privateNumber: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">ת.ז.</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={formUser.idNumber}
-                  onChange={(e) => setFormUser((u) => ({ ...u, idNumber: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">מספר אישי</label>
+                  <input
+                    type="text"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 outline-none"
+                    value={formUser.privateNumber}
+                    onChange={(e) => setFormUser((u) => ({ ...u, privateNumber: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">ת.ז.</label>
+                  <input
+                    type="text"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 outline-none"
+                    value={formUser.idNumber}
+                    onChange={(e) => setFormUser((u) => ({ ...u, idNumber: e.target.value }))}
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-3 mt-6">
               <button
                 type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded font-medium disabled:opacity-50"
+                className="px-5 py-2.5 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 transition disabled:opacity-50 flex items-center gap-2"
                 onClick={saveUser}
                 disabled={saving}
               >
-                {saving ? 'שומר...' : 'שמור'}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {saving ? 'שומר...' : 'שמור ומעדכן את האתר'}
               </button>
               <button
                 type="button"
-                className="px-4 py-2 border border-gray-300 rounded"
+                className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition"
                 onClick={cancelForm}
                 disabled={saving}
               >
@@ -322,32 +400,32 @@ export default function Admin() {
           </div>
         )}
 
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden">
           {loading ? (
-            <div className="p-8 flex justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <div className="p-12 flex justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
             </div>
           ) : users.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">אין משתמשים או שלא נטענו.</div>
+            <div className="p-12 text-center text-slate-500">אין משתמשים.</div>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-y divide-slate-100">
               {users.map((userName) => (
-                <li key={userName} className="flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium text-gray-900">{userName}</span>
+                <li key={userName} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50/80 transition">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-medium text-slate-800">{userName}</span>
                     <a
                       href={`${siteBase}/${userName}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-0.5 text-sm"
+                      className="text-sky-600 hover:text-sky-700 text-sm flex items-center gap-1 shrink-0"
                     >
-                      <ExternalLink className="w-3 h-3" /> צפה בדף
+                      <ExternalLink className="w-3.5 h-3.5" /> צפה בדף
                     </a>
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button
                       type="button"
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded"
+                      className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
                       onClick={() => startEdit(userName)}
                       title="ערוך"
                     >
@@ -355,7 +433,7 @@ export default function Admin() {
                     </button>
                     <button
                       type="button"
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                       onClick={() => handleDeleteClick(userName)}
                       title="מחק"
                     >
@@ -368,8 +446,8 @@ export default function Admin() {
           )}
         </div>
 
-        <p className="mt-4 text-xs text-gray-500">
-          הנתונים נשמרים בקובצי JSON בריפו ב-GitHub. אחרי שינוי הרץ &quot;עדכן את האתר&quot; כדי לבנות ולפרסם מחדש.
+        <p className="mt-6 text-xs text-slate-400">
+          הנתונים נשמרים ב-GitHub. אחרי כל שינוי האתר נבנה מחדש אוטומטית; ה-PDF יתעדכן כשהבנייה מסתיימת.
         </p>
       </div>
     </div>
