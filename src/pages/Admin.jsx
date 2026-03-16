@@ -23,7 +23,9 @@ const emptyUser = () => ({
 });
 
 export default function Admin() {
-  const [token, setTokenState] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '');
+  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '');
+  const [tokenInput, setTokenInput] = useState('');
+  const [loginChecking, setLoginChecking] = useState(false);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,10 +39,10 @@ export default function Admin() {
   const deployPollRef = useRef(null);
   const deployTriggeredAtRef = useRef(0);
 
-  const setToken = (t) => {
-    setTokenState(t);
+  const persistToken = (t) => {
     if (t) sessionStorage.setItem(TOKEN_KEY, t);
     else sessionStorage.removeItem(TOKEN_KEY);
+    setToken(t);
   };
 
   const loadUsers = useCallback(async () => {
@@ -75,7 +77,7 @@ export default function Admin() {
     deployPollRef.current = setInterval(async () => {
       try {
         const status = await github.getLatestDeployStatus(token);
-        const isOurRun = status?.createdAt && status.createdAt >= deployTriggeredAtRef.current - 10000;
+        const isOurRun = status?.createdAt != null && status.createdAt >= deployTriggeredAtRef.current - 15000;
         if (status?.status === 'completed' && isOurRun) {
           stopDeployPoll();
           setDeploying(false);
@@ -99,11 +101,29 @@ export default function Admin() {
 
   const handleLogout = () => {
     stopDeployPoll();
-    setToken('');
+    persistToken('');
+    setTokenInput('');
     setUsers([]);
     setEditing(null);
     setAdding(false);
     setError('');
+  };
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    const value = (e.target.elements?.token?.value ?? tokenInput).trim();
+    if (!value) return;
+    setError('');
+    setLoginChecking(true);
+    try {
+      await github.listUsers(value);
+      persistToken(value);
+      setTokenInput('');
+    } catch {
+      setError('הטוקן שגוי');
+    } finally {
+      setLoginChecking(false);
+    }
   };
 
   const triggerDeployAndWait = useCallback(async () => {
@@ -230,27 +250,45 @@ export default function Admin() {
   if (!token) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" dir="rtl">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+        <form
+          onSubmit={handleLoginSubmit}
+          className="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100"
+          method="post"
+          autoComplete="on"
+        >
           <h1 className="text-2xl font-bold text-slate-800 mb-1">פאנל ניהול</h1>
           <p className="text-slate-500 text-sm mb-6">התחבר עם GitHub כדי לערוך משתמשים</p>
           <p className="text-slate-600 text-sm mb-4">
             הכנס Personal Access Token עם הרשאות <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Contents</span> ו־<span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Actions</span>.
           </p>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-800 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
           <input
             type="password"
+            name="token"
+            autoComplete="current-password"
             placeholder="ghp_... או github_pat_..."
             className="w-full border border-slate-200 rounded-xl px-4 py-3 mb-5 focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition"
-            value={token}
-            onChange={(e) => setTokenState(e.target.value)}
+            value={tokenInput}
+            onChange={(e) => {
+              setTokenInput(e.target.value);
+              setError('');
+            }}
+            disabled={loginChecking}
           />
           <button
-            type="button"
-            className="w-full bg-slate-800 text-white py-3 rounded-xl font-medium hover:bg-slate-700 transition"
-            onClick={() => setToken(token)}
+            type="submit"
+            className="w-full bg-slate-800 text-white py-3 rounded-xl font-medium hover:bg-slate-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={loginChecking}
           >
-            התחבר
+            {loginChecking ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+            {loginChecking ? 'בודק...' : 'התחבר'}
           </button>
-        </div>
+        </form>
       </div>
     );
   }
