@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft } from 'lucide-react';
-import DocumentCard from '@/components/DocumentCard';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { HDate } from '@hebcal/core';
+import { getUserByEnglishName } from '@/lib/reserveDb';
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -14,30 +13,28 @@ export default function Home() {
   // Load user data on mount
   useEffect(() => {
     const loadUserData = async () => {
-      // Get path relative to base URL (skip /reserve/ on GitHub Pages)
-      const basePath = import.meta.env.BASE_URL.replace(/\/$/, ''); // '/reserve' or ''
+      // Get path relative to base URL and use it as the user slug.
+      const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
       let pathname = window.location.pathname;
       if (basePath && pathname.startsWith(basePath)) {
-        pathname = pathname.slice(basePath.length); // Remove base path
+        pathname = pathname.slice(basePath.length);
       }
       const pathParts = pathname.split('/').filter(p => p);
-      const userName = pathParts[0] || 'shaked'; // Default to 'shaked' if no username in URL
-      
+      const userName = pathParts[0] || 'shaked';
+
       try {
-        const userResponse = await fetch(`${import.meta.env.BASE_URL}assets/users/${userName}.json`);
-        if (userResponse.ok) {
-          const data = await userResponse.json();
-          setUserData(data);
-          setUserNotFound(false);
-          
-          // Determine greeting based on Israel time
-          const israelTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
-          const hour = new Date(israelTime).getHours();
-          setGreeting(hour < 12 ? 'בוקר טוב' : 'ערב טוב');
-        } else {
-          // User not found
+        const data = await getUserByEnglishName(userName);
+        if (!data) {
           setUserNotFound(true);
+          return;
         }
+        setUserData(data);
+        setUserNotFound(false);
+
+        // Determine greeting based on Israel time.
+        const israelTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
+        const hour = new Date(israelTime).getHours();
+        setGreeting(hour < 12 ? 'בוקר טוב' : 'ערב טוב');
       } catch (error) {
         console.error('Error loading user data:', error);
         setUserNotFound(true);
@@ -388,14 +385,24 @@ export default function Home() {
       </div>
 
       {/* Section 3 - First Document Card */}
-      <div className="w-full cursor-pointer" onClick={handleDownload}>
+      <button
+        type="button"
+        className="w-full cursor-pointer block"
+        onClick={handleDownload}
+        aria-label="הורד את האישור הראשון"
+      >
         <img src={`${import.meta.env.BASE_URL}assets/section3.png`} alt="שמ״פ חירום נוכחי" className="w-full" />
-      </div>
+      </button>
 
       {/* Section 4 - Second Document Card */}
-      <div className="w-full cursor-pointer" onClick={handleDownload}>
+      <button
+        type="button"
+        className="w-full cursor-pointer block"
+        onClick={handleDownload}
+        aria-label="הורד את האישור השני"
+      >
         <img src={`${import.meta.env.BASE_URL}assets/section4.png`} alt="טופס אישור שירות מילואים מזכה" className="w-full" />
-      </div>
+      </button>
     </div>
   );
 }

@@ -1,21 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Pencil,
   Trash2,
   LogOut,
-  RefreshCw,
   Loader2,
   ExternalLink,
-  CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import * as github from '@/lib/githubApi';
+import {
+  deleteUser as deleteDbUser,
+  listUsers,
+  saveUser as saveDbUser,
+  verifyAdminPassword,
+} from '@/lib/reserveDb';
 
-const TOKEN_KEY = 'reserve-admin-token';
-const DEPLOY_POLL_INTERVAL_MS = 5000;
+const SESSION_KEY = 'reserve-admin-session';
 
 const emptyUser = () => ({
+  englishName: '',
   firstName: '',
   lastName: '',
   privateNumber: '',
@@ -23,34 +26,23 @@ const emptyUser = () => ({
 });
 
 export default function Admin() {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '');
-  const [tokenInput, setTokenInput] = useState('');
+  const [password, setPassword] = useState('');
   const [loginChecking, setLoginChecking] = useState(false);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [deploying, setDeploying] = useState(false);
-  const [deployComplete, setDeployComplete] = useState(false);
+  const [authenticated, setAuthenticated] = useState(() => sessionStorage.getItem(SESSION_KEY) === 'true');
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [formUser, setFormUser] = useState(emptyUser());
-  const [formUserName, setFormUserName] = useState('');
   const [saving, setSaving] = useState(false);
-  const deployPollRef = useRef(null);
-  const deployTriggeredAtRef = useRef(0);
-
-  const persistToken = (t) => {
-    if (t) sessionStorage.setItem(TOKEN_KEY, t);
-    else sessionStorage.removeItem(TOKEN_KEY);
-    setToken(t);
-  };
 
   const loadUsers = useCallback(async () => {
-    if (!token) return;
+    if (!authenticated) return;
     setLoading(true);
     setError('');
     try {
-      const list = await github.listUsers(token);
+      const list = await listUsers();
       setUsers(list);
     } catch (e) {
       setError(e.message || 'Failed to load users');
@@ -58,51 +50,16 @@ export default function Admin() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [authenticated]);
 
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
-  const stopDeployPoll = useCallback(() => {
-    if (deployPollRef.current) {
-      clearInterval(deployPollRef.current);
-      deployPollRef.current = null;
-    }
-  }, []);
-
-  const startDeployPoll = useCallback(() => {
-    stopDeployPoll();
-    deployTriggeredAtRef.current = Date.now();
-    deployPollRef.current = setInterval(async () => {
-      try {
-        const status = await github.getLatestDeployStatus(token);
-        const isOurRun = status?.createdAt != null && status.createdAt >= deployTriggeredAtRef.current - 15000;
-        if (status?.status === 'completed' && isOurRun) {
-          stopDeployPoll();
-          setDeploying(false);
-          setDeployComplete(true);
-          setTimeout(() => setDeployComplete(false), 8000);
-        }
-        if (status?.conclusion === 'failure' && isOurRun) {
-          stopDeployPoll();
-          setDeploying(false);
-          setError('הבנייה נכשלה. בדוק ב-Actions.');
-        }
-      } catch {
-        // keep polling
-      }
-    }, DEPLOY_POLL_INTERVAL_MS);
-  }, [token, stopDeployPoll]);
-
-  useEffect(() => {
-    return () => stopDeployPoll();
-  }, [stopDeployPoll]);
-
   const handleLogout = () => {
-    stopDeployPoll();
-    persistToken('');
-    setTokenInput('');
+    sessionStorage.removeItem(SESSION_KEY);
+    setAuthenticated(false);
+    setPassword('');
     setUsers([]);
     setEditing(null);
     setAdding(false);
@@ -111,61 +68,46 @@ export default function Admin() {
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    const value = (e.target.elements?.token?.value ?? tokenInput).trim();
+    const value = password.trim();
     if (!value) return;
     setError('');
     setLoginChecking(true);
     try {
-      await github.listUsers(value);
-      persistToken(value);
-      setTokenInput('');
+      const isValid = await verifyAdminPassword(value);
+      if (!isValid) {
+        setError('הסיסמה שגויה');
+        return;
+      }
+      sessionStorage.setItem(SESSION_KEY, 'true');
+      setAuthenticated(true);
+      setPassword('');
     } catch {
-      setError('הטוקן שגוי');
+      setError('לא ניתן להתחבר למסד הנתונים');
     } finally {
       setLoginChecking(false);
     }
-  };
-
-  const triggerDeployAndWait = useCallback(async () => {
-    if (!token) return;
-    setDeploying(true);
-    setDeployComplete(false);
-    setError('');
-    try {
-      await github.triggerDeploy(token);
-      startDeployPoll();
-    } catch (e) {
-      setError(e.message || 'Failed to trigger deploy');
-      setDeploying(false);
-    }
-  }, [token, startDeployPoll]);
-
-  const handleTriggerDeploy = async () => {
-    await triggerDeployAndWait();
   };
 
   const startAdd = () => {
     setAdding(true);
     setEditing(null);
     setFormUser(emptyUser());
-    setFormUserName('');
     setError('');
   };
 
-  const startEdit = async (userName) => {
+  const startEdit = async (user) => {
     setError('');
     setAdding(false);
     try {
-      const user = await github.getUser(token, userName);
       if (user) {
-        setEditing({ userName, ...user });
+        setEditing(user);
         setFormUser({
+          englishName: user.englishName ?? '',
           firstName: user.firstName ?? '',
           lastName: user.lastName ?? '',
           privateNumber: user.privateNumber ?? '',
           idNumber: user.idNumber ?? '',
         });
-        setFormUserName(userName);
       }
     } catch (e) {
       setError(e.message || 'Failed to load user');
@@ -176,42 +118,33 @@ export default function Admin() {
     setAdding(false);
     setEditing(null);
     setFormUser(emptyUser());
-    setFormUserName('');
     setError('');
   };
 
   const saveUser = async () => {
-    if (!token) return;
-    const { firstName, lastName, privateNumber, idNumber } = formUser;
-    const name = formUserName.trim().toLowerCase();
+    if (!authenticated) return;
+    const { englishName, firstName, lastName, privateNumber, idNumber } = formUser;
+    const name = englishName.trim().toLowerCase();
     if (!name) {
-      setError('שם משתמש (נתיב) חובה');
+      setError('שם באנגלית (נתיב) חובה');
       return;
     }
     if (!firstName.trim() || !lastName.trim()) {
       setError('שם פרטי ושם משפחה חובה');
       return;
     }
-    const userData = { firstName, lastName, privateNumber, idNumber };
     setSaving(true);
     setError('');
     try {
-      if (adding) {
-        await github.createUser(token, name, userData);
-        await loadUsers();
-        cancelForm();
-        await triggerDeployAndWait();
-      } else if (editing) {
-        if (editing.userName === name) {
-          await github.updateUser(token, editing.userName, userData, editing._sha);
-        } else {
-          await github.createUser(token, name, userData);
-          await github.deleteUser(token, editing.userName, editing._sha);
-        }
-        await loadUsers();
-        cancelForm();
-        await triggerDeployAndWait();
-      }
+      await saveDbUser({
+        englishName: name,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        privateNumber: privateNumber.trim(),
+        idNumber: idNumber.trim(),
+      });
+      await loadUsers();
+      cancelForm();
     } catch (e) {
       setError(e.message || 'שמירה נכשלה');
     } finally {
@@ -219,15 +152,14 @@ export default function Admin() {
     }
   };
 
-  const deleteUser = async (userName, sha) => {
-    if (!token || !confirm(`למחוק את המשתמש "${userName}"?`)) return;
+  const deleteUser = async (englishName) => {
+    if (!authenticated || !confirm(`למחוק את המשתמש "${englishName}"?`)) return;
     setSaving(true);
     setError('');
     try {
-      await github.deleteUser(token, userName, sha);
+      await deleteDbUser(englishName);
       await loadUsers();
-      if (editing?.userName === userName) cancelForm();
-      await triggerDeployAndWait();
+      if (editing?.englishName === englishName) cancelForm();
     } catch (e) {
       setError(e.message || 'מחיקה נכשלה');
     } finally {
@@ -235,19 +167,10 @@ export default function Admin() {
     }
   };
 
-  const handleDeleteClick = async (userName) => {
-    try {
-      const user = await github.getUser(token, userName);
-      if (user?._sha) deleteUser(userName, user._sha);
-    } catch {
-      setError('לא ניתן לטעון משתמש למחיקה');
-    }
-  };
-
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
   const siteBase = `${window.location.origin}${basePath}`;
 
-  if (!token) {
+  if (!authenticated) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" dir="rtl">
         <form
@@ -257,10 +180,7 @@ export default function Admin() {
           autoComplete="on"
         >
           <h1 className="text-2xl font-bold text-slate-800 mb-1">פאנל ניהול</h1>
-          <p className="text-slate-500 text-sm mb-6">התחבר עם GitHub כדי לערוך משתמשים</p>
-          <p className="text-slate-600 text-sm mb-4">
-            הכנס Personal Access Token עם הרשאות <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Contents</span> ו־<span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Actions</span>.
-          </p>
+          <p className="text-slate-500 text-sm mb-6">התחבר עם סיסמת הניהול כדי לערוך משתמשים</p>
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-800 text-sm flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -269,13 +189,12 @@ export default function Admin() {
           )}
           <input
             type="password"
-            name="token"
             autoComplete="current-password"
-            placeholder="ghp_... או github_pat_..."
+            placeholder="סיסמת ניהול"
             className="w-full border border-slate-200 rounded-xl px-4 py-3 mb-5 focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition"
-            value={tokenInput}
+            value={password}
             onChange={(e) => {
-              setTokenInput(e.target.value);
+              setPassword(e.target.value);
               setError('');
             }}
             disabled={loginChecking}
@@ -295,51 +214,17 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-slate-100" dir="rtl">
-      {/* Deploy overlay */}
-      {(deploying || deployComplete) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm mx-4 text-center">
-            {deploying && (
-              <>
-                <Loader2 className="w-12 h-12 animate-spin text-slate-600 mx-auto mb-4" />
-                <p className="text-slate-800 font-medium">מעדכן את האתר</p>
-                <p className="text-slate-500 text-sm mt-1">ה-PDF והדף יתעדכנו בעוד דקה–דקה וחצי</p>
-              </>
-            )}
-            {deployComplete && !deploying && (
-              <>
-                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-                <p className="text-slate-800 font-medium">האתר מעודכן</p>
-                <p className="text-slate-500 text-sm mt-1">אפשר לפתוח את דף המשתמש ולהוריד PDF מעודכן</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="max-w-2xl mx-auto p-6">
         <header className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold text-slate-800">ניהול משתמשים</h1>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="flex items-center gap-2 text-slate-600 hover:text-slate-800 text-sm px-3 py-2 rounded-xl hover:bg-white/80 transition"
-              onClick={handleLogout}
-              title="התנתק"
-            >
-              <LogOut className="w-4 h-4" /> התנתק
-            </button>
-            <button
-              type="button"
-              className="flex items-center gap-2 text-sm bg-white border border-slate-200 rounded-xl px-4 py-2 hover:bg-slate-50 hover:border-slate-300 transition disabled:opacity-50"
-              onClick={handleTriggerDeploy}
-              disabled={deploying}
-              title="בנה ופרסם את האתר מחדש"
-            >
-              {deploying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              עדכן את האתר
-            </button>
-          </div>
+          <button
+            type="button"
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-800 text-sm px-3 py-2 rounded-xl hover:bg-white/80 transition"
+            onClick={handleLogout}
+            title="התנתק"
+          >
+            <LogOut className="w-4 h-4" /> התנתק
+          </button>
         </header>
 
         {error && (
@@ -365,12 +250,12 @@ export default function Admin() {
             <h2 className="text-lg font-semibold text-slate-800 mb-4">{adding ? 'משתמש חדש' : 'עריכת משתמש'}</h2>
             <div className="grid gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1.5">שם משתמש (נתיב באתר)</label>
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">שם באנגלית (נתיב באתר)</label>
                 <input
                   type="text"
                   className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-slate-300 focus:border-slate-300 outline-none"
-                  value={formUserName}
-                  onChange={(e) => setFormUserName(e.target.value)}
+                  value={formUser.englishName}
+                  onChange={(e) => setFormUser((u) => ({ ...u, englishName: e.target.value }))}
                   placeholder="למשל gal"
                   disabled={!!editing}
                 />
@@ -424,7 +309,7 @@ export default function Admin() {
                 disabled={saving}
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {saving ? 'שומר...' : 'שמור ומעדכן את האתר'}
+                {saving ? 'שומר...' : 'שמור'}
               </button>
               <button
                 type="button"
@@ -447,15 +332,18 @@ export default function Admin() {
             <div className="p-12 text-center text-slate-500">אין משתמשים.</div>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {users.map((userName) => (
-                <li key={userName} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50/80 transition">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-medium text-slate-800">{userName}</span>
+              {users.map((user) => (
+                <li key={user.englishName} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50/80 transition">
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-800">{user.englishName}</div>
+                    <div className="text-sm text-slate-500">
+                      {user.firstName} {user.lastName}
+                    </div>
                     <a
-                      href={`${siteBase}/${userName}`}
+                      href={`${siteBase}/${user.englishName}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sky-600 hover:text-sky-700 text-sm flex items-center gap-1 shrink-0"
+                      className="text-sky-600 hover:text-sky-700 text-sm flex items-center gap-1 shrink-0 mt-1"
                     >
                       <ExternalLink className="w-3.5 h-3.5" /> צפה בדף
                     </a>
@@ -464,7 +352,7 @@ export default function Admin() {
                     <button
                       type="button"
                       className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-                      onClick={() => startEdit(userName)}
+                      onClick={() => startEdit(user)}
                       title="ערוך"
                     >
                       <Pencil className="w-4 h-4" />
@@ -472,7 +360,7 @@ export default function Admin() {
                     <button
                       type="button"
                       className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                      onClick={() => handleDeleteClick(userName)}
+                      onClick={() => deleteUser(user.englishName)}
                       title="מחק"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -485,7 +373,7 @@ export default function Admin() {
         </div>
 
         <p className="mt-6 text-xs text-slate-400">
-          הנתונים נשמרים ב-GitHub. אחרי כל שינוי האתר נבנה מחדש אוטומטית; ה-PDF יתעדכן כשהבנייה מסתיימת.
+          הנתונים נשמרים ישירות במסד הנתונים, והדף מתעדכן מיד בלי בניית אתר מחדש.
         </p>
       </div>
     </div>
